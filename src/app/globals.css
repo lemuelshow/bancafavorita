@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #06172f;
+  --navy2: #081f41;
+  --panel: #0a2348;
+  --panel-2: #061a36;
+  --line: #224d86;
+  --line-soft: #173d70;
+  --gold: #ffd629;
+  --text: #f7faff;
+  --muted: #8eaad0;
+  --win: #55e889;
+  --loss: #ff667a;
+  --danger: #ef4444;
+}
+
+@theme inline {
+  --color-navy: var(--navy);
+  --color-navy-2: var(--navy2);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-gold: var(--gold);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-win: var(--win);
+  --color-loss: var(--loss);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-inter);
+}
+
+html {
+  color-scheme: dark;
+  overscroll-behavior-y: none;
+}
+
+body {
+  background: linear-gradient(145deg, #05152c 0%, #071a37 55%, #06172f 100%);
+  color: var(--text);
+  min-height: 100vh;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button {
+  touch-action: manipulation;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-pop-in {
+  animation: pop-in 0.16s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.16s ease-out;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.animate-marquee {
+  animation: marquee 26s linear infinite;
+}

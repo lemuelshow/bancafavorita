@@ -1,0 +1,31 @@
+databases:
+  - name: banca-favorita-db
+    plan: starter
+    databaseName: banca_favorita
+    user: banca_favorita
+
+services:
+  - type: web
+    name: banca-favorita
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: banca-favorita-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: VEOPAG_CLIENT_ID
+        sync: false
+      - key: VEOPAG_CLIENT_SECRET
+        sync: false
+      - key: VEOPAG_WEBHOOK_SECRET
+        sync: false
+      - key: VEOPAG_CALLBACK_URL
+        sync: false

@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: banca_favorita
+      POSTGRES_PASSWORD: banca_favorita
+      POSTGRES_DB: banca_favorita
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banca_favorita"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://banca_favorita:banca_favorita@db:5432/banca_favorita
+      SESSION_SECRET: dev-secret-change-me
+      VEOPAG_CLIENT_ID: ${VEOPAG_CLIENT_ID:-}
+      VEOPAG_CLIENT_SECRET: ${VEOPAG_CLIENT_SECRET:-}
+      VEOPAG_WEBHOOK_SECRET: ${VEOPAG_WEBHOOK_SECRET:-}
+      VEOPAG_CALLBACK_URL: ${VEOPAG_CALLBACK_URL:-http://localhost:3000/api/pix/webhook}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

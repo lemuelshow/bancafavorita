@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Fase 1: jogador + admin. Cambista/comissões, exposição/descarrego, financeiro
+// e rapidinha entram em fases futuras (ver relatório de escopo).
+
+enum PouleStatus {
+  AGUARDANDO
+  BATIDO
+  PERDIDO
+}
+
+enum TransactionKind {
+  DEPOSITO_SIMULADO
+  DEPOSITO_PIX
+  SAQUE_SIMULADO
+  APOSTA
+  PREMIO
+}
+
+enum PixDepositStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?  @unique
+  phone        String   @unique
+  cpf          String   @unique
+  passwordHash String
+  balance      Decimal  @default(0) @db.Decimal(12, 2)
+  xp           Int      @default(0) // 1 XP por R$1 apostado — define o nível/tier do jogador
+  isAdmin      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  bannedAt     DateTime?
+
+  // Afiliados: comissão fixa por cadastro indicado (CPA) + % de revenue share (REV).
+  isAffiliate     Boolean  @default(false)
+  affiliateCpa    Decimal  @default(0) @db.Decimal(12, 2)
+  affiliateRevPct Decimal  @default(0) @db.Decimal(5, 2)
+  referralCode    String?  @unique
+  referredById    String?
+  referredBy      User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals       User[]   @relation("Referrals")
+
+  // Cambistas: comissão (%) sobre o valor apostado pelos jogadores atribuídos a eles.
+  isCambista            Boolean  @default(false)
+  cambistaCommissionPct Decimal  @default(0) @db.Decimal(5, 2)
+  cambistaCode          String?  @unique
+  cambistaId            String?
+  cambista              User?    @relation("CambistaPlayers", fields: [cambistaId], references: [id])
+  players               User[]   @relation("CambistaPlayers")
+
+  poules            Poule[]
+  transactions      Transaction[]
+  supportMessages   SupportMessage[]
+  affiliateEarnings AffiliateEarning[]
+  cambistaEarnings  CambistaEarning[]
+  pixDeposits       PixDeposit[]
+  cambistaClients   CambistaClient[]
+}
+
+model AffiliateEarning {
+  id          String   @id @default(cuid())
+  affiliateId String
+  affiliate   User     @relation(fields: [affiliateId], references: [id])
+  kind        String // "CPA" | "REV"
+  amount      Decimal  @db.Decimal(12, 2)
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([affiliateId])
+}
+
+model CambistaEarning {
+  id          String   @id @default(cuid())
+  cambistaId  String
+  cambista    User     @relation(fields: [cambistaId], references: [id])
+  amount      Decimal  @db.Decimal(12, 2)
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([cambistaId])
+}
+
+// Cobrança Pix gerada via gateway VeoPag para depósito na carteira.
+model PixDeposit {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id])
+  externalId    String           @unique
+  transactionId String?          @unique
+  amount        Decimal          @db.Decimal(12, 2)
+  fee           Decimal?         @db.Decimal(12, 2)
+  status        PixDepositStatus @default(PENDING)
+  qrcode        String?          @db.Text
+  createdAt     DateTime         @default(now())
+  paidAt        DateTime?
+
+  @@index([userId])
+}
+
+// Um sorteio específico (loteria + data + horário). Único por combinação.
+model Draw {
+  id      String   @id @default(cuid())
+  lottery String
+  date    DateTime @db.Date
+  time    String
+  drawAt  DateTime
+
+  poules Poule[]
+  result Result?
+
+  @@unique([lottery, date, time])
+}
+
+model Result {
+  id        String   @id @default(cuid())
+  drawId    String   @unique
+  draw      Draw     @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  prizes    String[] // 5 posições, cada uma com 4 dígitos (milhar)
+  source    String   @default("OFICIAL")
+  createdAt DateTime @default(now())
+}
+
+// Um pôule = um "carrinho" de jogos (bets) para um sorteio, pago no ato com saldo.
+model Poule {
+  id           String      @id @default(cuid())
+  code         String      @unique
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  drawId       String
+  draw         Draw        @relation(fields: [drawId], references: [id])
+  total        Decimal     @db.Decimal(12, 2)
+  returnAmount Decimal     @default(0) @db.Decimal(12, 2)
+  status       PouleStatus @default(AGUARDANDO)
+  bets         Bet[]
+  createdAt    DateTime    @default(now())
+  settledAt    DateTime?
+
+  // Preenchido quando um cambista faz a aposta em nome de um cliente presencial (sem conta própria).
+  cambistaClientId String?
+  cambistaClient    CambistaClient? @relation(fields: [cambistaClientId], references: [id])
+  // Como o cambista recebeu do cliente: "PIX" | "DINHEIRO" | "CARTAO" | "FIADO" (ainda a receber).
+  paymentMethod String?
+
+  @@index([userId])
+  @@index([drawId])
+  @@index([cambistaClientId])
+}
+
+// Cliente presencial cadastrado por um cambista (não tem login próprio — o cambista aposta por ele).
+model CambistaClient {
+  id         String   @id @default(cuid())
+  cambistaId String
+  cambista   User     @relation(fields: [cambistaId], references: [id])
+  name       String
+  phone      String
+  address    String?
+  createdAt  DateTime @default(now())
+  poules     Poule[]
+
+  @@index([cambistaId])
+}
+
+model Bet {
+  id         String  @id @default(cuid())
+  pouleId    String
+  poule      Poule   @relation(fields: [pouleId], references: [id], onDelete: Cascade)
+  modality   String
+  numbers    String[]
+  prizeFrom  Int
+  prizeTo    Int
+  valueMode  String
+  inputValue Decimal @db.Decimal(12, 2)
+  unitValue  Decimal @db.Decimal(12, 2)
+  units      Int
+  total      Decimal @db.Decimal(12, 2)
+  won        Boolean @default(false)
+  payout     Decimal @default(0) @db.Decimal(12, 2)
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+  kind        TransactionKind
+  amount      Decimal         @db.Decimal(12, 2)
+  description String
+  createdAt   DateTime        @default(now())
+
+  @@index([userId])
+}
+
+model SupportMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  sender    String // "cliente" | "equipe"
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Linha única (id fixo "singleton") com a identidade visual configurável pelo admin.
+model SiteSettings {
+  id               String   @id @default("singleton")
+  logoUrl          String? // logo do site (sidebar, topo mobile)
+  loginImageUrl    String? // imagem do painel da tela de Entrar
+  registerImageUrl String? // imagem do painel da tela de Cadastrar
+  banner1Url       String? // carrossel da home — banner 1
+  banner2Url       String? // carrossel da home — banner 2
+  banner3Url       String? // carrossel da home — banner 3
+  promo1Url        String? // home — promoções especiais, imagem clicável 1
+  promo2Url        String? // home — promoções especiais, imagem clicável 2
+  promo3Url        String? // home — promoções especiais, imagem clicável 3
+  supportChatUrl   String? // URL externa do chat de suporte (WhatsApp, Tawk.to, Crisp, etc.)
+  updatedAt        DateTime @updatedAt
+}
+
+// Linha única com as credenciais do gateway de pagamento (VeoPag), configuráveis pelo admin.
+// Têm prioridade sobre as variáveis de ambiente VEOPAG_* (que seguem valendo como fallback).
+model GatewaySettings {
+  id                  String   @id @default("singleton")
+  veopagClientId      String?
+  veopagClientSecret  String?
+  veopagWebhookSecret String?
+  veopagCallbackUrl   String?
+  updatedAt           DateTime @updatedAt
+}
